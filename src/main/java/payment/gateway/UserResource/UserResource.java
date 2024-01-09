@@ -1,32 +1,23 @@
 package payment.gateway.UserResource;
 
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 //import com.razorpay.RazorpayClient;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
-import com.razorpay.Utils;
-import jakarta.inject.Inject;
+        import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import jakarta.validation.Payload;
-import jakarta.ws.rs.*;
+        import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
-import org.eclipse.microprofile.rest.client.inject.RestClient;
-import org.jboss.logging.annotations.Pos;
-import org.jboss.resteasy.annotations.Query;
-import org.json.JSONObject;
-import payment.gateway.RazorPayCheckoutResponse.CheckoutResponse;
-import payment.gateway.Repository.*;
+        import org.json.JSONObject;
+        import payment.gateway.Repository.*;
 import payment.gateway.UserEntity.*;
+import payment.gateway.ViewCartDTO.ViewCartdto;
+import payment.gateway.exceptions.CustomerNotFoundException;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 
 @Path("/user")
@@ -211,33 +202,42 @@ public class UserResource {
         }
     }
 
-
-
     @GET
     @Path("/viewcart{cid}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response viewCart(@PathParam("cid") int cid) {
+        ViewCartdto vcdto = new ViewCartdto();
         if (isValidCustomer(cid)) {
             Customer cust = customerRepo.findById((long) cid);
             List<Cart> custCart = cust.getCart();
             if(custCart.isEmpty()){
-                return Response.ok("Your Cart is Empty").build();
+                vcdto.setProducts(List.of());
+                vcdto.setTotal(0);
+                vcdto.setStatus(false);
+                vcdto.setMessage("FAILED");
+                return Response.ok(vcdto).build();
             }else {
                 ArrayList<Products> prodlist = new ArrayList<>();
                 //which product is bought by which customer:
                 for (Cart cart : custCart) {
-                    if (cid == cart.getCustomer().getCid())
-                        prodlist.add(cart.getProducts());
+                    if (cid == cart.getCustomer().getCid()) {
+                        Products prod = cart.getProducts();
+                        //in the list add only pname and pcost
+
+                    }
                 }
-               // int total = 0;
-                //Find the total cost of all products added int the cart
                 customerRepo.persist(cust);
-                return Response.ok("Items You Bought: " + "\n" + prodlist + "\n" + "Total Cost: " + cust.getCtotal()).build();
+                vcdto.setProducts(prodlist);
+                vcdto.setTotal(cust.getCtotal());
+                vcdto.setMessage("SUCCESS");
+                vcdto.setStatus(true);
+                return Response.ok(vcdto).build();
             }
         } else {
-            return Response.ok("Customer Not Found").build();
+            return Response.ok(new CustomerNotFoundException("Customer Not Found")).build();
         }
     }
+
 
     //OrderCreation
     @Path("/placeorder")

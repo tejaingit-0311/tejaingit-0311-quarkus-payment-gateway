@@ -162,7 +162,7 @@ public class UserResource {
 //                        old_total = curr_total;
 //                        cust.setCtotal(old_total);
 //                        customerRepo.persist(cust);
-                        return Response.ok("Product added in the cart").build();
+                        return Response.ok("Product added in the Cart").build();
                     }
 
                 }

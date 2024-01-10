@@ -15,12 +15,9 @@ public class Products {
     private Integer pid;
     private String pname;
     private int pcost;
-
     @Column(name = "instock")
     private boolean inStock;
-
     private short units;
-
 
     @JsonManagedReference
     @OneToMany(mappedBy = "products")

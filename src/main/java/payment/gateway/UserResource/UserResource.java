@@ -5,17 +5,24 @@ package payment.gateway.UserResource;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
-        import jakarta.inject.Inject;
+import com.razorpay.Utils;
+import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
         import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-        import org.json.JSONObject;
-        import payment.gateway.Repository.*;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.json.JSONObject;
+import payment.gateway.OrderDto.OrderId;
+import payment.gateway.ProductsDto.ProductsDto;
+import payment.gateway.RazorPayCheckoutRequest.CheckoutRequest;
+import payment.gateway.RazorPayCheckoutResponse.CheckoutResponse;
+import payment.gateway.Repository.*;
 import payment.gateway.UserEntity.*;
 import payment.gateway.ViewCartDTO.ViewCartdto;
 import payment.gateway.exceptions.CustomerNotFoundException;
 
+import java.security.SignatureException;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -208,8 +215,9 @@ public class UserResource {
     public Response viewCart(@PathParam("cid") int cid) {
         ViewCartdto vcdto = new ViewCartdto();
         if (isValidCustomer(cid)) {
-            Customer cust = customerRepo.findById((long) cid);
+            Customer cust = customerRepo.findById((long) cid);//1
             List<Cart> custCart = cust.getCart();
+            //if the customer didn't added anything in the cart
             if(custCart.isEmpty()){
                 vcdto.setProducts(List.of());
                 vcdto.setTotal(0);
@@ -217,14 +225,12 @@ public class UserResource {
                 vcdto.setMessage("FAILED");
                 return Response.ok(vcdto).build();
             }else {
+                //We only want pname and pcost: created ProductsDto
                 ArrayList<Products> prodlist = new ArrayList<>();
                 //which product is bought by which customer:
+                //boolean success = true;
                 for (Cart cart : custCart) {
-                    if (cid == cart.getCustomer().getCid()) {
-                        Products prod = cart.getProducts();
-                        //in the list add only pname and pcost
-
-                    }
+                    prodlist.add(cart.getProducts());
                 }
                 customerRepo.persist(cust);
                 vcdto.setProducts(prodlist);
@@ -238,56 +244,71 @@ public class UserResource {
         }
     }
 
-
     //OrderCreation
     @Path("/placeorder")
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public Response placeAnOrder(@QueryParam("cid") int cid) throws RazorpayException{
         if(isValidCustomer(cid)){
+            OrderId orderId = new OrderId();
             Customer cust  = customerRepo.findById((long) cid);
-
+            try{
             RazorpayClient razorpay = new RazorpayClient("rzp_test_SMuMe11eNRBTkt", "ldbW0oVHlGWZ3eEXiX5xhd5J");
             JSONObject orderRequest = new JSONObject();
             orderRequest.put("amount", cust.getCtotal()); // amount in the smallest currency unit (should be in paise)
             orderRequest.put("currency", "INR");
 
             Order order = razorpay.orders.create(orderRequest);
-            return Response.ok((String)order.get("id")).build();
-        }
-        return Response.ok("Not Valid Customer").build();
+                orderId.setOrder_id  ((String)order.get("id"));
+                orderId.setMessage("OrderId Generated");
+                orderId.setStatus(true);
+            return Response.ok(orderId).build();
+            } catch (RazorpayException re){
+                orderId.setOrder_id("");
+                orderId.setMessage("OrderId Not Generated");
+                orderId.setStatus(true);
+                //exception page
+                return Response.ok(orderId).build();
+            }
 
+        }else
+            return Response.ok("Not Valid Customer").build();
     }
     //Checkout RazorPayResponse : razorpay_payment_id, razorpay_order_id, razorpay_signature and will be shown in alert
 
-//    @POST
-//    @Produces(MediaType.APPLICATION_JSON)
-//    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
-//    public Response verifyPayment(@RequestBody CheckoutResponse cr) throws RazorpayException {
-//        RazorpayClient razorpay = new RazorpayClient("rzp_test_SMuMe11eNRBTkt", "ldbW0oVHlGWZ3eEXiX5xhd5J");
-//        //CheckoutResponse checkoutResponse = new CheckoutResponse();
-//
-//        String secret = "ldbW0oVHlGWZ3eEXiX5xhd5J";
-//        try {
-//            JSONObject options = new JSONObject();
-//            options.put("razorpay_order_id", cr.getRazorpay_order_id());
-//            options.put("razorpay_payment_id", cr.getRazorpay_payment_id());
-//            options.put("razorpay_signature", cr.getRazorpay_signature());
-//
-//            boolean isSame = Utils.verifyPaymentSignature(options, secret);
-//            if (isSame) {
-//                //Payment SuccessPage
-//                return Response.ok("Payment Successful").build();
-//            } else
-//                //Payment FailedPage
-//                return Response.ok("Payment Failed").build();
-//        } catch (RazorpayException re) {
-//            //
-//        }
-//
-//    return
-//    }
+    //This will be triggered just after getting generating CheckoutData:
+    @POST
+    @Path("/charge")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+    //@RequestBody will take care of initializing the values in the CheckoutRequest class
+    public Response verifyPayment(@RequestBody CheckoutRequest cr) throws RazorpayException {
+        CheckoutResponse cres = new CheckoutResponse();
+        RazorpayClient razorpay = new RazorpayClient("rzp_test_SMuMe11eNRBTkt", "ldbW0oVHlGWZ3eEXiX5xhd5J");
 
+        String secret = "ldbW0oVHlGWZ3eEXiX5xhd5J";
+        try {
+            JSONObject options = new JSONObject();
+            options.put("razorpay_order_id", cr.getRazorpay_order_id());
+            options.put("razorpay_payment_id", cr.getRazorpay_payment_id());
+            options.put("razorpay_signature", cr.getRazorpay_signature());
+
+            boolean isSame = Utils.verifyPaymentSignature(options, secret);
+            if (isSame) {
+                //Payment SuccessPage
+                cres.setMessage("Payment Success");
+                cres.setStatus(true);
+                return Response.ok("Payment Successful").build();
+            } else
+                //Payment FailedPage
+                cres.setMessage("Payment Failed");
+            cres.setStatus(false);
+            return Response.ok("Payment Failed").build();
+        } catch (RazorpayException re) {
+            //exception page
+            return Response.ok(new SignatureException("Invalid Signature")).build();
+        }
+    }
 
 }
 

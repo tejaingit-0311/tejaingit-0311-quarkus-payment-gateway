@@ -13,8 +13,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.json.JSONObject;
-import payment.gateway.OrderDto.OrderId;
-import payment.gateway.ProductsDto.ProductsDto;
+import payment.gateway.OrderIdDto.OrderId;
 import payment.gateway.RazorPayCheckoutRequest.CheckoutRequest;
 import payment.gateway.RazorPayCheckoutResponse.CheckoutResponse;
 import payment.gateway.Repository.*;
@@ -38,8 +37,8 @@ public class UserResource {
     @Inject
     CartRepo cartRepo;
 
-//    @RestClient
-//    RazorpayClient rc;
+    @Inject
+    PaymentRepo paymentRepo;
 
     //Verify which customer is buying the product
     private boolean isValidCustomer(int id){
@@ -47,6 +46,17 @@ public class UserResource {
         Customer cust = customerRepo.findById((long)id);
         if(cust != null) {
             if (cust.getCid() == id)
+                return true;
+            else
+                return false;
+        }else
+            return false;
+    }
+    private boolean isValidProduct(int pid){
+        Optional<Products> prod = productsRepo.findByIdOptional((long) pid);
+        if(prod.isPresent()){
+            Products product = prod.get();
+            if(product.getId() == pid)
                 return true;
             else
                 return false;
@@ -84,11 +94,13 @@ public class UserResource {
     }
 
     //viewAllProducts
-//    @GET
-//    @Path("/viewAllProducts")
-//    public Response getProducts(){
-//        return Response.ok(productsRepo.listAll()).build();
-//    }
+    @GET
+    @Path("/getproducts")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getProducts(){
+        List<Products> prod = productsRepo.listAll();
+        return Response.ok(prod).build();
+    }
 //
 //    //viewallcustomers
 //    @GET
@@ -171,43 +183,11 @@ public class UserResource {
         return Response.ok("Customer doesn't exist").build();
     }
 
-    private boolean isValidProduct(int pid){
-        Optional<Products> prod = productsRepo.findByIdOptional((long) pid);
-        if(prod.isPresent()){
-            Products product = prod.get();
-            if(product.getId() == pid)
-                return true;
-            else
-                return false;
-        }else
-            return false;
-    }
+
     //delete the product from the cart
     // /removetheproduct: from the cart-> cid, pid
 
-    @DELETE
-    @Path("/deleteproduct{pid}")
-    @Produces(MediaType.TEXT_PLAIN)
-    public Response deleteProduct(@QueryParam("cid") int cid, @PathParam("pid") int pid){
-        if(!isValidCustomer(cid)){
-            return Response.ok("Customer Not Found").build();
-        }else {
-            Customer cust = customerRepo.findById((long) cid);
-            //check for the valid product
-                if(!isValidProduct(pid)){
-                    return Response.ok("Not A Valid Product").build();
-                }else{
-                    //in real time product will be deleted that is sent via @RequestBody Products prod -> remove(prod)
-                    List<Cart> cart = cust.getCart();
-                    if(cart.isEmpty())
-                        return Response.ok("Your Cart Is EMPTY ").build();
-                    else {
-                        cart.remove(pid - 1);
-                        return Response.ok("Product Removed From the Cart").build();
-                    }
-                }
-        }
-    }
+
 
     @GET
     @Path("/viewcart{cid}")
@@ -243,7 +223,29 @@ public class UserResource {
             return Response.ok(new CustomerNotFoundException("Customer Not Found")).build();
         }
     }
-
+    @DELETE
+    @Path("/deleteproduct{pid}")
+    @Produces(MediaType.TEXT_PLAIN)
+    public Response deleteProduct(@QueryParam("cid") int cid, @PathParam("pid") int pid){
+        if(!isValidCustomer(cid)){
+            return Response.ok("Customer Not Found").build();
+        }else {
+            Customer cust = customerRepo.findById((long) cid);
+            //check for the valid product
+            if(!isValidProduct(pid)){
+                return Response.ok("Not A Valid Product").build();
+            }else{
+                //in real time product will be deleted that is sent via @RequestBody Products prod -> remove(prod)
+                List<Cart> cart = cust.getCart();
+                if(cart.isEmpty())
+                    return Response.ok("Your Cart Is EMPTY ").build();
+                else {
+                    cart.remove(pid - 1);
+                    return Response.ok("Product Removed From the Cart").build();
+                }
+            }
+        }
+    }
     //OrderCreation
     @Path("/placeorder")
     @GET
@@ -265,45 +267,54 @@ public class UserResource {
             return Response.ok(orderId).build();
             } catch (RazorpayException re){
                 orderId.setOrder_id("");
-                orderId.setMessage("OrderId Not Generated");
+                orderId.setMessage("OrderId Is Not Generated");
                 orderId.setStatus(true);
                 //exception page
                 return Response.ok(orderId).build();
             }
 
-        }else
+        }
             return Response.ok("Not Valid Customer").build();
     }
     //Checkout RazorPayResponse : razorpay_payment_id, razorpay_order_id, razorpay_signature and will be shown in alert
 
-    //This will be triggered just after getting generating CheckoutData:
+    //This will be triggered just after Payment is received by our website.
+    //This is used to verify after the payment captured by our website internally calls this endpoint.
+    //And that payment received is from the authentic source or not
     @POST
     @Path("/charge")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     //@RequestBody will take care of initializing the values in the CheckoutRequest class
+    //send the AMOUNT from the UI to store it in the DB
     public Response verifyPayment(@RequestBody CheckoutRequest cr) throws RazorpayException {
+
         CheckoutResponse cres = new CheckoutResponse();
         RazorpayClient razorpay = new RazorpayClient("rzp_test_SMuMe11eNRBTkt", "ldbW0oVHlGWZ3eEXiX5xhd5J");
-
+        //store the details in the DB: in order to capture the Payment in our website with the help of payment_id
+        PaymentHistory ph = new PaymentHistory();
+        ph.setRazorpay_payment_id(cr.getRazorpay_payment_id());
+        ph.setRazorpay_order_id(cr.getRazorpay_order_id());
+        ph.setRazorpay_signature(cr.getRazorpay_signature());
+        ph.setAmount(cr.getAmount());
+        paymentRepo.persist(ph);
         String secret = "ldbW0oVHlGWZ3eEXiX5xhd5J";
         try {
             JSONObject options = new JSONObject();
             options.put("razorpay_order_id", cr.getRazorpay_order_id());
             options.put("razorpay_payment_id", cr.getRazorpay_payment_id());
             options.put("razorpay_signature", cr.getRazorpay_signature());
-
             boolean isSame = Utils.verifyPaymentSignature(options, secret);
             if (isSame) {
-                //Payment SuccessPage
-                cres.setMessage("Payment Success");
+                //Authentic source
+                cres.setMessage("Payment Received From the Authentic Source");
                 cres.setStatus(true);
-                return Response.ok("Payment Successful").build();
+                return Response.ok(cres).build();
             } else
                 //Payment FailedPage
-                cres.setMessage("Payment Failed");
-            cres.setStatus(false);
-            return Response.ok("Payment Failed").build();
+                cres.setMessage("Payment is Not Received From the Authentic Source");
+                cres.setStatus(false);
+            return Response.ok(cres).build();
         } catch (RazorpayException re) {
             //exception page
             return Response.ok(new SignatureException("Invalid Signature")).build();

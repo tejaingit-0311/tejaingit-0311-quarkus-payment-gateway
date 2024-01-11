@@ -19,6 +19,7 @@ public class Products {
     private boolean inStock;
     private short units;
 
+    private String pimages;
     @JsonManagedReference
     @OneToMany(mappedBy = "products")
     private List<Cart> carts;
@@ -78,4 +79,19 @@ public class Products {
         this.units = units;
     }
 
+    public Integer getPid() {
+        return pid;
+    }
+
+    public void setPid(Integer pid) {
+        this.pid = pid;
+    }
+
+    public String getPimages() {
+        return pimages;
+    }
+
+    public void setPimages(String pimages) {
+        this.pimages = pimages;
+    }
 }

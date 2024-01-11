@@ -4,6 +4,8 @@ public class ProductsDto {
     private String pname;
     private long pcost;
     private short units;
+    private boolean instock;
+
     public String getPname() {
         return pname;
     }

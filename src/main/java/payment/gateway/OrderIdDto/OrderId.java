@@ -1,4 +1,4 @@
-package payment.gateway.OrderDto;
+package payment.gateway.OrderIdDto;
 
 public class OrderId {
     private String order_id;

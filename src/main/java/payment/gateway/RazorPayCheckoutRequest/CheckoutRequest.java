@@ -4,8 +4,7 @@ public class CheckoutRequest {
     private String razorpay_payment_id;
     private String razorpay_order_id;
     private String razorpay_signature;
-
-    private long amount;
+    private boolean isSuccess;
 
     public String getRazorpay_payment_id() {
         return razorpay_payment_id;
@@ -31,10 +30,11 @@ public class CheckoutRequest {
         this.razorpay_signature = razorpay_signature;
     }
 
-    public void setAmount(long amount){
-        this.amount = amount;
+    public boolean isSuccess() {
+        return isSuccess;
     }
-    public long getAmount() {
-        return amount;
+
+    public void setSuccess(boolean success) {
+        isSuccess = success;
     }
 }

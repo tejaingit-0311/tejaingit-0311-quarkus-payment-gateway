@@ -1,11 +1,9 @@
-package payment.gateway.RazorPayCheckoutResponse;
+package payment.gateway.CustomerNotFoundDTO;
 
-public class CheckoutResponse {
+public class CustomerNotFound {
     private String message;
+
     private boolean status;
-
-    private long amount;
-
 
     public String getMessage() {
         return message;

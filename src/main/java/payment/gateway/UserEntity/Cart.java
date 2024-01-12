@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 
 import java.time.LocalDate;
 import java.util.Date;
+import java.util.Objects;
 
 @Entity
 public class Cart {
@@ -24,6 +25,19 @@ public class Cart {
     private LocalDate date;
 
     private int quantity;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Cart cart = (Cart) o;
+        return Objects.equals(products.getPid(), cart.products.getPid());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(products);
+    }
 
     public Integer getId() {
         return cart_id;

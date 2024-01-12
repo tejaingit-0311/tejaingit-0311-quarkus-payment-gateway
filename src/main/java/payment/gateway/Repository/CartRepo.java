@@ -7,5 +7,4 @@ import javax.swing.text.html.parser.Entity;
 
 @ApplicationScoped
 public class CartRepo implements PanacheRepository<Cart>{
-
 }

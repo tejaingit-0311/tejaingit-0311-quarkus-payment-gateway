@@ -2,10 +2,7 @@ package payment.gateway.UserResource;
 
 
 //import com.razorpay.RazorpayClient;
-import com.razorpay.Order;
-import com.razorpay.RazorpayClient;
-import com.razorpay.RazorpayException;
-import com.razorpay.Utils;
+import com.razorpay.*;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
         import jakarta.ws.rs.*;
@@ -13,11 +10,15 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.json.JSONObject;
+import payment.gateway.CardDetailsRequestDto.CardDetails;
 import payment.gateway.OrderIdDto.OrderId;
+import payment.gateway.PaymentCaptureHistory.PaymentCaptureHistory;
+import payment.gateway.ProductsDto.ProductsDto;
 import payment.gateway.RazorPayCheckoutRequest.CheckoutRequest;
 import payment.gateway.RazorPayCheckoutResponse.CheckoutResponse;
 import payment.gateway.Repository.*;
 import payment.gateway.UserEntity.*;
+import payment.gateway.UserEntity.Customer;
 import payment.gateway.ViewCartDTO.ViewCartdto;
 import payment.gateway.exceptions.CustomerNotFoundException;
 
@@ -225,25 +226,34 @@ public class UserResource {
     }
     @DELETE
     @Path("/deleteproduct{pid}")
-    @Produces(MediaType.TEXT_PLAIN)
-    public Response deleteProduct(@QueryParam("cid") int cid, @PathParam("pid") int pid){
+    @Produces(MediaType.APPLICATION_JSON)
+    @Transactional
+    public Response deleteProduct(@QueryParam("cid") int cid ,@RequestBody ProductsDto pdto){
         if(!isValidCustomer(cid)){
-            return Response.ok("Customer Not Found").build();
+            String s = "Customer Not Found";
+            return Response.ok(s).build();
         }else {
             Customer cust = customerRepo.findById((long) cid);
-            //check for the valid product
-            if(!isValidProduct(pid)){
-                return Response.ok("Not A Valid Product").build();
-            }else{
-                //in real time product will be deleted that is sent via @RequestBody Products prod -> remove(prod)
+            //check for the valid product:
+            //in real time in cart, added products only will be there while adding in the cart
+            //In real time product will be deleted that is sent via @RequestBody Products prod -> remove(prod)
                 List<Cart> cart = cust.getCart();
-                if(cart.isEmpty())
-                    return Response.ok("Your Cart Is EMPTY ").build();
-                else {
-                    cart.remove(pid - 1);
-                    return Response.ok("Product Removed From the Cart").build();
+                if(cart.isEmpty()) {
+                    String s = "Your Cart Is Empty";
+                    return Response.ok(s).build();
                 }
-            }
+                else {
+                       //cart.removeIf(cart1 -> cart1.getProducts().getId().equals(pdto));
+                    for (Cart c:cart) {
+                      if (c.getProducts().getId().equals(pdto.getPid())){
+                          cart.remove(c);
+                          cust.setCart(cart);
+                          customerRepo.persist(cust);
+                          return Response.ok("Product Removed from the Cart").build();
+                      }
+                    }
+                    return Response.ok("Product not exist").build();
+                }
         }
     }
     //OrderCreation
@@ -257,10 +267,12 @@ public class UserResource {
             try{
             RazorpayClient razorpay = new RazorpayClient("rzp_test_SMuMe11eNRBTkt", "ldbW0oVHlGWZ3eEXiX5xhd5J");
             JSONObject orderRequest = new JSONObject();
-            orderRequest.put("amount", cust.getCtotal()); // amount in the smallest currency unit (should be in paise)
+            orderRequest.put("amount", cust.getCtotal() * 100); // amount in the smallest currency unit (should be in paise)
             orderRequest.put("currency", "INR");
 
             Order order = razorpay.orders.create(orderRequest);
+
+
                 orderId.setOrder_id  ((String)order.get("id"));
                 orderId.setMessage("OrderId Generated");
                 orderId.setStatus(true);
@@ -274,52 +286,89 @@ public class UserResource {
             }
 
         }
-            return Response.ok("Not Valid Customer").build();
+           // CustomerNotFound cnf = new CustomerNotFound();
+            String cnf = "Customer Not Found";
+            return Response.ok(cnf).build();
     }
+
+
+
     //Checkout RazorPayResponse : razorpay_payment_id, razorpay_order_id, razorpay_signature and will be shown in alert
 
     //This will be triggered just after Payment is received by our website.
     //This is used to verify after the payment captured by our website internally calls this endpoint.
     //And that payment received is from the authentic source or not
     @POST
-    @Path("/charge")
+    @Path("/savedetails")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     //@RequestBody will take care of initializing the values in the CheckoutRequest class
     //send the AMOUNT from the UI to store it in the DB
-    public Response verifyPayment(@RequestBody CheckoutRequest cr) throws RazorpayException {
-
+    public Response saveDetails(@RequestBody CheckoutRequest cr) throws RazorpayException {
         CheckoutResponse cres = new CheckoutResponse();
-        RazorpayClient razorpay = new RazorpayClient("rzp_test_SMuMe11eNRBTkt", "ldbW0oVHlGWZ3eEXiX5xhd5J");
         //store the details in the DB: in order to capture the Payment in our website with the help of payment_id
-        PaymentHistory ph = new PaymentHistory();
+        if(!cr.isSuccess()){
+            cres.setMessage("Failed");
+            cres.setStatus(false);
+          return Response.ok(cres).build();
+        }
+        CheckoutPaymentResponse ph = new CheckoutPaymentResponse();
         ph.setRazorpay_payment_id(cr.getRazorpay_payment_id());
         ph.setRazorpay_order_id(cr.getRazorpay_order_id());
         ph.setRazorpay_signature(cr.getRazorpay_signature());
-        ph.setAmount(cr.getAmount());
         paymentRepo.persist(ph);
-        String secret = "ldbW0oVHlGWZ3eEXiX5xhd5J";
-        try {
-            JSONObject options = new JSONObject();
-            options.put("razorpay_order_id", cr.getRazorpay_order_id());
-            options.put("razorpay_payment_id", cr.getRazorpay_payment_id());
-            options.put("razorpay_signature", cr.getRazorpay_signature());
-            boolean isSame = Utils.verifyPaymentSignature(options, secret);
-            if (isSame) {
-                //Authentic source
-                cres.setMessage("Payment Received From the Authentic Source");
-                cres.setStatus(true);
-                return Response.ok(cres).build();
-            } else
-                //Payment FailedPage
-                cres.setMessage("Payment is Not Received From the Authentic Source");
-                cres.setStatus(false);
-            return Response.ok(cres).build();
-        } catch (RazorpayException re) {
-            //exception page
-            return Response.ok(new SignatureException("Invalid Signature")).build();
-        }
+        cres.setMessage("Success");
+        cres.setStatus(true);
+        return Response.ok(cres).build();
+
+
     }
+
+     /*@POST
+    @Path("/pay")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response capture(@RequestBody CapturePayment capturePayment) throws RazorpayException{
+        //After authentication capture the amount into my Website
+        RazorpayClient razorpay = new RazorpayClient("[YOUR_KEY_ID]", "[YOUR_KEY_SECRET]");
+
+        String paymentId = capturePayment.getPaymentid();
+
+        JSONObject paymentRequest = new JSONObject();
+        paymentRequest.put("amount", capturePayment.getAmount());
+        paymentRequest.put("currency", "INR");
+    //Payment Success or Failed
+        Payment payment = razorpay.payments.capture(paymentId, paymentRequest);
+        //store the response of the Payment
+        PaymentHistory ph = new PaymentHistory(payment);
+        return Response.ok(ph).build();
+    }*/
+    /* @POST
+    @Path("/pay")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response pay(@RequestBody CardDetails cardDetails) throws RazorpayException{
+        RazorpayClient razorpay = new RazorpayClient("rzp_test_SMuMe11eNRBTkt", "ldbW0oVHlGWZ3eEXiX5xhd5J");
+
+        //pass the carddetailsobj in the method
+        //fetch the requestCardRef.. Check if that card details is matched then we have valid card with that customer...press ok
+        //then deduct that amount from the customer and update it in customer's table..
+        //  public Card requestCardReference(JSONObject request) throws RazorpayException {
+        //        return (Card)this.post("v1", "cards/fingerprints", request);
+        //    }
+        JSONObject carddetails= new JSONObject();
+        carddetails.put("CardNetwork" , cardDetails.getCardNetwork());
+        carddetails.put("CardNumber", cardDetails.getCardNumber());
+        carddetails.put("CVV", cardDetails.getCvv());
+        carddetails.put("ExpirayDate", cardDetails.getExpdate());
+        //retrived Card
+            Card card = razorpay.cards.requestCardReference(carddetails);
+        if(cardDetails.equals(card)){
+            return Response.ok("Payment Succesful").build();
+        }
+        //re-enter the details of the card and make the payment
+        return Response.ok("Re-enter the Card Details").build();
+        //return the Card Details: if success then redirect to the(UI)home page, else redirect to the payment failed page
+
+    }*/
 
 }
 

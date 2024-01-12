@@ -1,22 +1,29 @@
 package payment.gateway.UserEntity;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
-import payment.gateway.UserEntity.Customer;
 
 @Entity
-public class PaymentHistory {
+public class CheckoutPaymentResponse {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int cpr_id;
     private String razorpay_payment_id;
     private String razorpay_order_id;
     private String razorpay_signature;
-    private long amount ;
 
-    //which customer has done the transaction
-    @Id
-    @OneToOne
-    private Customer cust;
+    private long amount;
+
+    public int getCpr_id() {
+        return cpr_id;
+    }
+
+    public void setCpr_id(int cpr_id) {
+        this.cpr_id = cpr_id;
+    }
+
     public String getRazorpay_payment_id() {
         return razorpay_payment_id;
     }
@@ -41,14 +48,6 @@ public class PaymentHistory {
         this.razorpay_signature = razorpay_signature;
     }
 
-    public Customer getCust() {
-        return cust;
-    }
-
-    public void setCust(Customer cust) {
-        this.cust = cust;
-    }
-
     public long getAmount() {
         return amount;
     }
@@ -56,5 +55,4 @@ public class PaymentHistory {
     public void setAmount(long amount) {
         this.amount = amount;
     }
-
 }

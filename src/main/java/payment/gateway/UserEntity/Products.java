@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import org.hibernate.dialect.function.ListaggGroupConcatEmulation;
 
 import java.util.List;
+import java.util.Objects;
 
 
 @Entity
@@ -85,6 +86,19 @@ public class Products {
 
     public void setPid(Integer pid) {
         this.pid = pid;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Products products = (Products) o;
+        return Objects.equals(pid, products.pid);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(pid);
     }
 
     public String getPimages() {
